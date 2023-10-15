@@ -1,10 +1,12 @@
 {
-  "name": "code-editor",
+  "name": "lithium",
   "version": "1.0.0",
   "scripts": {
-    "build": "npx tsc && node tests/test"
+    "start": "vite",
+    "build": "vite build"
   },
   "devDependencies": {
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "vite": "^4.4.11"
   }
 }
