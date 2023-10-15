@@ -31,19 +31,23 @@ export function Editor(editor: HTMLDivElement) {
             selectionDiv.innerHTML = "";
             return;
         }
-        const lMin = Math.min(cursor.line1, cursor.line2);
-        const lMax = Math.max(cursor.line1, cursor.line2);
-        const k1 = lMin === cursor.line1 ? cursor.key1 : cursor.key2;
-        const k2 = lMin === cursor.line2 ? cursor.key2 : cursor.key1;
         let selHTML = "";
-        //background: white 0 0;
-        //background-size: 0 19px;
-        selHTML += translateSelection(k1, lMin);
-        for (let line = lMin + 1; line < lMax; line++) {
-            selHTML += translateSelection(0, line);
-        }
-        if (cursor.line1 !== cursor.line2) {
-            selHTML += translateSelection(k2, lMax);
+        if (cursor.line1 === cursor.line2) {
+            const kMin = Math.min(cursor.key1, cursor.key2);
+            const kMax = Math.max(cursor.key1, cursor.key2);
+            selHTML = `<div style="translate: ${translateToCode(kMin, cursor.line1)}; width: ${(kMax - kMin) * CW}px"></div>`;
+        } else {
+            const lMin = Math.min(cursor.line1, cursor.line2);
+            const lMax = Math.max(cursor.line1, cursor.line2);
+            let k1 = lMin === cursor.line1 ? cursor.key1 : cursor.key2;
+            let k2 = lMin === cursor.line2 ? cursor.key2 : cursor.key1;
+            selHTML += translateSelection(k1, lMin);
+            for (let line = lMin + 1; line < lMax; line++) {
+                selHTML += translateSelection(0, line);
+            }
+            if (cursor.line1 !== cursor.line2) {
+                selHTML += translateSelection(k2, lMax);
+            }
         }
         selectionDiv.innerHTML = selHTML;
     }

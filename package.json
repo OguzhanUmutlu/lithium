@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "scripts": {
     "start": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
+    "gh-pages": "^6.0.0",
     "typescript": "^5.2.2",
     "vite": "^4.4.11"
   }
