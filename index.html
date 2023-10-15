@@ -12,6 +12,22 @@
             margin: 0;
             overflow: hidden;
         }
+
+        .run {
+            position: fixed;
+            right: 0;
+            top: 0;
+            padding: 10px;
+            background: #36393F;
+            border-bottom-left-radius: 5px;
+            color: white;
+            font-family: monospace, serif;
+            cursor: pointer;
+        }
+
+        .run:hover {
+            filter: brightness(1.1);
+        }
     </style>
 </head>
 <body>
@@ -21,10 +37,17 @@
     <div class="lines"></div>
     <div class="code"></div>
 </div>
+<div class="run">Run JS</div>
 </body>
 <script type="module">
     import {Editor} from "./src/editor";
 
-    Editor(document.querySelector(".editor"));
+    const editor = Editor(document.querySelector(".editor"));
+
+    document.querySelector(".run").addEventListener("click", event => {
+        import(URL.createObjectURL(new Blob([editor.code.join("\n")], {
+            type: "application/javascript"
+        })));
+    });
 </script>
 </html>

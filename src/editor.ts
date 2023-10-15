@@ -1,4 +1,11 @@
-import {paintJS} from "./tokenizer";
+import {paintJS, tokenizeJS} from "./tokenizer";
+
+type Cursor = {
+    line1: number,
+    key1: number,
+    line2: number,
+    key2: number
+};
 
 export function Editor(editor: HTMLDivElement) {
     const cursorDiv = <HTMLDivElement>document.querySelector(".cursor");
@@ -10,12 +17,15 @@ export function Editor(editor: HTMLDivElement) {
     let isMouseDown = false;
     const CW = 8.88;
     const CH = 19;
-    const cursor = {
+    let cursor: Cursor = {
         line1: 0,
         key1: 0,
         line2: 0,
         key2: 0
     };
+    const history: { code: string[], cursor: Cursor }[] = [];
+    let historyIndex = -1;
+    let saveHistoryTimeout: any;
 
     function translateToCode(key: number, line: number) {
         return (linesDiv.getBoundingClientRect().width + key * CW + 0.5) + "px " + (line * CH + 1.5) + "px";
@@ -23,6 +33,29 @@ export function Editor(editor: HTMLDivElement) {
 
     function makeSelectionBox(key: number, line: number, width: number) {
         return `<div style="translate: ${translateToCode(key, line)}; width: ${width * CW}px"></div>`;
+    }
+
+    function trySaveHistory() {
+        clearTimeout(saveHistoryTimeout);
+        saveHistoryTimeout = setTimeout(() => {
+            const obj = {code: [...code], cursor: {...cursor}};
+            if (JSON.stringify(obj) === JSON.stringify(history[historyIndex])) return;
+            history.splice(historyIndex + 1, 0, obj);
+            historyIndex++;
+        });
+    }
+
+    function setHistoryIndex(index: number) {
+        historyIndex = index;
+        const now = history[historyIndex];
+        if (!now) return;
+        code = [...now.code];
+        codeDiv.innerHTML = `<div class="line"></div>`.repeat(code.length);
+        for (let i = 0; i < code.length; i++) {
+            updateLineFormat(i, true);
+        }
+        cursor = {...now.cursor};
+        updateCursorPosition(true);
     }
 
     function getCodeBetween(key1: number, line1: number, key2: number, line2: number) {
@@ -46,7 +79,8 @@ export function Editor(editor: HTMLDivElement) {
         return c;
     }
 
-    function updateCursorPosition() {
+    function updateCursorPosition(noLoop = false) {
+        if (!noLoop) trySaveHistory();
         cursorDiv.style.translate = translateToCode(cursor.key2, cursor.line2);
         if (!hasSelection()) {
             selectionDiv.innerHTML = "";
@@ -88,7 +122,8 @@ export function Editor(editor: HTMLDivElement) {
         linesDiv.innerHTML = lineListStr;
     }
 
-    function updateLineFormat(index: number) {
+    function updateLineFormat(index: number, noLoop = false) {
+        if (!noLoop) trySaveHistory();
         const line = <HTMLDivElement>codeDiv.children[index];
         let html = "";
         const content = code[index];
@@ -121,7 +156,6 @@ export function Editor(editor: HTMLDivElement) {
                 codeDiv.children[cursor.line1].insertAdjacentElement("afterend", div);
             }
             code[cursor.line1 + 1] = lastLine + lineCode.substring(cursor.key1);
-            updateLineFormat(cursor.line1 + 1);
             code.splice(cursor.line1 + 1, 0, ...new Array(lines.length - 2).fill(""));
             for (let i = 0; i < lines.length - 2; i++) { // -2 is because we already can do the first and last
                 const div = document.createElement("div");
@@ -131,6 +165,7 @@ export function Editor(editor: HTMLDivElement) {
                 code[cursor.line1 + i + 1] = lines[i + 1];
                 updateLineFormat(cursor.line1 + i + 1);
             }
+            updateLineFormat(cursor.line1 + lines.length - 1);
             cursor.key1 = cursor.key2 = lastLine.length;
             cursor.line1 = cursor.line2 += lines.length - 1;
         }
@@ -210,18 +245,14 @@ export function Editor(editor: HTMLDivElement) {
     }
 
     function doKeyLimits() {
-        if (cursor.key1 < 0) {
-            cursor.key1 = cursor.key2 = 0;
-        }
-        if (cursor.key1 > code[cursor.line1].length) {
-            cursor.key1 = cursor.key2 = code[cursor.line1].length;
-        }
-        if (cursor.line1 < 0) {
-            cursor.line1 = cursor.line2 = 0;
-        }
-        if (cursor.line1 > code.length - 1) {
-            cursor.line1 = cursor.line2 = code.length - 1;
-        }
+        if (cursor.key1 < 0) cursor.key1 = 0;
+        if (cursor.key2 < 0) cursor.key2 = 0;
+        if (cursor.key1 > code[cursor.line1].length) cursor.key1 = code[cursor.line1].length;
+        if (cursor.key2 > code[cursor.line2].length) cursor.key2 = code[cursor.line2].length;
+        if (cursor.line1 < 0) cursor.line1 = 0;
+        if (cursor.line2 < 0) cursor.line2 = 0;
+        if (cursor.line1 > code.length - 1) cursor.line1 = code.length - 1;
+        if (cursor.line2 > code.length - 1) cursor.line2 = code.length - 1;
         updateCursorPosition();
     }
 
@@ -233,7 +264,7 @@ export function Editor(editor: HTMLDivElement) {
             code[cursor.line1] = lineCode.substring(0, kMin) + lineCode.substring(kMax);
             cursor.key1 = cursor.key2 = kMin;
             updateLineFormat(cursor.line1);
-            updateCursorPosition();
+            doKeyLimits();
             return;
         }
         const lMin = Math.min(cursor.line1, cursor.line2);
@@ -249,14 +280,14 @@ export function Editor(editor: HTMLDivElement) {
         updateLineList();
         cursor.key1 = cursor.key2 = k1;
         cursor.line1 = cursor.line2 = lMin;
-        updateCursorPosition();
+        doKeyLimits();
     }
 
     linesDiv.innerHTML = "1";
     cursorDiv.hidden = true;
-    const code: string[] = `const a: number = 10;
+    let code: string[] = `const a = 10;
 
-export function myFunction(text: string) {
+export function myFunction(text) {
     console.log(text);
 }
 
@@ -265,8 +296,8 @@ myFunction(a);`.split("\n");
         codeDiv.innerHTML += `<div class="line"></div>`;
         updateLineList();
         updateLineFormat(i);
-        cursor.line1 = ++cursor.line2;
     }
+    updateCursorPosition();
     addEventListener("blur", () => setFocus(false));
     addEventListener("mousedown", e => {
         setFocus(e.composedPath().includes(codeDiv));
@@ -335,44 +366,58 @@ myFunction(a);`.split("\n");
         },
         ArrowRight(event: KeyboardEvent) {
             event.preventDefault();
-            if (hasSelection()) return putSelectionToEnd();
-            cursor.key1 = ++cursor.key2;
+            if (!event.shiftKey && hasSelection()) return putSelectionToEnd();
+            cursor.key2++;
+            if (!event.shiftKey) cursor.key1 = cursor.key2;
             if (cursor.key1 > code[cursor.line1].length && cursor.line1 < code.length - 1) {
-                cursor.line1 = ++cursor.line2;
-                cursor.key1 = cursor.key2 = 0;
+                cursor.line2++;
+                cursor.key2 = 0;
+                if (!event.shiftKey) {
+                    cursor.line1 = cursor.line2;
+                    cursor.key1 = 0;
+                }
             }
             doKeyLimits();
         },
         ArrowLeft(event: KeyboardEvent) {
             event.preventDefault();
-            if (hasSelection()) return putSelectionToStart();
-            cursor.key1 = --cursor.key2;
+            if (!event.shiftKey && hasSelection()) return putSelectionToStart();
+            cursor.key2--;
+            if (!event.shiftKey) cursor.key1 = cursor.key2;
             if (cursor.key1 < 0 && cursor.line1 > 0) {
-                cursor.line1 = --cursor.line2;
-                cursor.key1 = cursor.key2 = Infinity; // this will make it will go to the end of that line
+                cursor.line2--;
+                cursor.key2 = Infinity; // this will make it will go to the end of that line
+                if (!event.shiftKey) {
+                    cursor.key1 = Infinity;
+                    cursor.line1 = cursor.line2;
+                }
             }
             doKeyLimits();
         },
         ArrowUp(event: KeyboardEvent) {
             event.preventDefault();
-            if (hasSelection()) putSelectionToEnd();
+            if (!event.shiftKey && hasSelection()) putSelectionToEnd();
             if (cursor.line1 === 0) {
-                cursor.key1 = cursor.key2 = 0;
+                cursor.key2 = 0;
+                if (!event.shiftKey) cursor.key2 = 0;
                 updateCursorPosition();
                 return;
             }
-            cursor.line1 = --cursor.line2;
+            cursor.line2--;
+            if (!event.shiftKey) cursor.line1 = cursor.line2;
             doKeyLimits();
         },
         ArrowDown(event: KeyboardEvent) {
             event.preventDefault();
-            if (hasSelection()) putSelectionToEnd();
+            if (!event.shiftKey && hasSelection()) putSelectionToEnd();
             if (cursor.line1 >= code.length - 1) {
-                cursor.key1 = cursor.key2 = code[cursor.line1].length;
+                cursor.key2 = code[cursor.line1].length;
+                if (!event.shiftKey) cursor.key1 = cursor.key2;
                 updateCursorPosition();
                 return;
             }
-            cursor.line1 = ++cursor.line2;
+            cursor.line2++;
+            if (!event.shiftKey) cursor.line1 = cursor.line2;
             doKeyLimits();
         },
         Tab(event: KeyboardEvent) {
@@ -402,6 +447,14 @@ myFunction(a);`.split("\n");
         async "control-v"(event: KeyboardEvent) {
             const text = await navigator.clipboard.readText().catch(() => "");
             writeText(text.replaceAll("\r\n", "\n"));
+        },
+        "control-z"(event: KeyboardEvent) {
+            if (historyIndex === 0) return;
+            setHistoryIndex(historyIndex - 1);
+        },
+        "control-y"(event: KeyboardEvent) {
+            if (historyIndex === history.length - 1) return;
+            setHistoryIndex(historyIndex + 1);
         }
     };
     const IgnoredKeys = [
@@ -427,12 +480,18 @@ myFunction(a);`.split("\n");
         const modifier = ModifierCombinations[modifierName];
         if (modifier) return modifier(e);
         writeChar(e.key);
+        trySaveHistory();
     });
 
-    function mouseEventCommon(e: MouseEvent, f: boolean) {
+    function getMousePosition(e: MouseEvent) {
         const rect = codeDiv.getBoundingClientRect();
         const y = Math.max(0, Math.min(code.length - 1, Math.floor((e.clientY - rect.y) / CH)));
         const x = Math.max(0, Math.min(code[y].length, Math.round((e.clientX - rect.x) / CW)));
+        return {x, y};
+    }
+
+    function mouseEventCommon(e: MouseEvent, f: boolean) {
+        const {x, y} = getMousePosition(e);
         cursor.key2 = x;
         cursor.line2 = y;
         if (f) {
@@ -446,6 +505,22 @@ myFunction(a);`.split("\n");
         isMouseDown = true;
         mouseEventCommon(e, true);
     });
+    codeDiv.addEventListener("dblclick", e => {
+        const {x, y} = getMousePosition(e);
+        const groups = tokenizeJS(code[y]);
+        for (let i = 0, j = 0; i < groups.length; i++) {
+            const group = groups[i];
+            j += group.text.length;
+            if (j >= x) {
+                j -= group.text.length;
+                cursor.line1 = cursor.line2 = y;
+                cursor.key1 = j;
+                cursor.key2 = j + group.text.length;
+                updateCursorPosition();
+                return;
+            }
+        }
+    });
     addEventListener("mousemove", e => {
         if (!isMouseDown) return;
         mouseEventCommon(e, false);
@@ -454,4 +529,19 @@ myFunction(a);`.split("\n");
         if (!isMouseDown) return;
         isMouseDown = false;
     });
+
+    return {
+        get history() {
+            return history;
+        },
+        get historyIndex() {
+            return historyIndex;
+        },
+        get cursor() {
+            return cursor;
+        },
+        get code() {
+            return code;
+        }
+    };
 }
