@@ -2,7 +2,7 @@
   "name": "code-editor",
   "version": "1.0.0",
   "scripts": {
-    "build": "npx tsc"
+    "build": "node tests/test && npx tsc"
   },
   "devDependencies": {
     "typescript": "^5.2.2"
