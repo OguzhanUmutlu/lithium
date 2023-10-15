@@ -40,13 +40,13 @@ export function Editor(editor: HTMLDivElement) {
             const lMin = Math.min(cursor.line1, cursor.line2);
             const lMax = Math.max(cursor.line1, cursor.line2);
             let k1 = lMin === cursor.line1 ? cursor.key1 : cursor.key2;
-            let k2 = lMin === cursor.line2 ? cursor.key2 : cursor.key1;
+            let k2 = lMin === cursor.line2 ? cursor.key1 : cursor.key2;
             selHTML += translateSelection(k1, lMin);
             for (let line = lMin + 1; line < lMax; line++) {
                 selHTML += translateSelection(0, line);
             }
             if (cursor.line1 !== cursor.line2) {
-                selHTML += translateSelection(k2, lMax);
+                selHTML += `<div style="translate: ${translateToCode(0, lMax)}; width: ${k2 * CW}px"></div>`;
             }
         }
         selectionDiv.innerHTML = selHTML;
@@ -120,7 +120,7 @@ export function Editor(editor: HTMLDivElement) {
 
     linesDiv.innerHTML = "1";
     cursorDiv.hidden = true;
-    const code: string[] = [""];
+    const code: string[] = ["11111111111", "11111111111", "11111111111", "11111111111"];
     for (let i = 0; i < code.length; i++) {
         codeDiv.innerHTML += `<div class="line"></div>`;
         updateLineList();
