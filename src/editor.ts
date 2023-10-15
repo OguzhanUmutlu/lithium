@@ -169,21 +169,17 @@ export function Editor(editor: HTMLDivElement) {
                 }
                 const lMin = Math.min(cursor.line1, cursor.line2);
                 const lMax = Math.max(cursor.line1, cursor.line2);
+                const k1 = lMin === cursor.line1 ? cursor.key1 : cursor.key2;
+                const k2 = lMin === cursor.line2 ? cursor.key1 : cursor.key2;
                 code.splice(lMin + 1, lMax - lMin - 1);
                 [...codeDiv.children].slice(lMin + 1, lMax).forEach(i => i.remove());
-                if (lMin === cursor.line1) {
-                    code[cursor.line1] = code[cursor.line1].substring(0, cursor.key1);
-                    code[cursor.line2] = code[cursor.line2].substring(cursor.key2);
-                    cursor.key2 = cursor.key1;
-                    cursor.line2 = cursor.line1;
-                } else {
-                    code[cursor.line1] = code[cursor.line1].substring(cursor.key1);
-                    code[cursor.line2] = code[cursor.line2].substring(0, cursor.key2);
-                    cursor.key1 = cursor.key2;
-                    cursor.line1 = cursor.line2;
-                }
-                updateLineFormat(cursor.line1);
-                if (cursor.line1 !== cursor.line2) updateLineFormat(cursor.line2);
+                code[lMin] = code[lMin].substring(0, k1) + code[lMin + 1].substring(k2);
+                code.splice(lMin + 1, 1);
+                codeDiv.children[lMin + 1].remove();
+                updateLineFormat(lMin);
+                updateLineList();
+                cursor.key1 = cursor.key2 = k1;
+                cursor.line1 = cursor.line2 = lMin;
                 updateCursorPosition();
                 return;
             }
