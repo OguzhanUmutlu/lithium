@@ -33,11 +33,21 @@
 }
 
 .cursor {
-    content: "";
+    pointer-events: none;
     background: white;
     width: 1px;
     height: 16px;
-    position: absolute;
+    position: relative;
+}
+
+.selection {
+    pointer-events: none;
+}
+
+.selection > div {
+    background: white;
+    height: 19px;
+    position: relative;
 }
 
 .blink {

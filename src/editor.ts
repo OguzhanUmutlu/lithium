@@ -1,40 +1,66 @@
 import {tokenizeJS} from "./tokenizer";
 
 export function Editor(editor: HTMLDivElement) {
+    const cursorDiv = <HTMLDivElement>document.querySelector(".cursor");
+    const selectionDiv = <HTMLDivElement>document.querySelector(".selection");
     const linesDiv = <HTMLDivElement>editor.querySelector(".lines");
     const codeDiv = <HTMLDivElement>editor.querySelector(".code");
-    const cursorDiv = <HTMLDivElement>document.querySelector(".cursor");
+
     let isFocusing = false;
+    let isMouseDown = false;
     const CW = 8.88;
     const CH = 19;
+    const cursor = {
+        line1: 0,
+        key1: 0,
+        line2: 0,
+        key2: 0
+    };
+
+    function translateToCode(key: number, line: number) {
+        return (linesDiv.getBoundingClientRect().width + key * CW + 0.5) + "px " + (line * CH + 1.5) + "px";
+    }
+
+    function translateSelection(key: number, line: number) {
+        return `<div style="translate: ${translateToCode(key, line)}; width: ${(code[line].length - key) * CW}px"></div>`;
+    }
 
     function updateCursorPosition() {
-        cursorDiv.style.left = linesDiv.getBoundingClientRect().width + cursorKeyIndex * CW + 0.5 + "px";
-        cursorDiv.style.top = cursorLineIndex * CH + 1.5 + "px";
+        cursorDiv.style.translate = translateToCode(cursor.key2, cursor.line2);
+        if (!hasSelection()) {
+            selectionDiv.innerHTML = "";
+            return;
+        }
+        const lMin = Math.min(cursor.line1, cursor.line2);
+        const lMax = Math.max(cursor.line1, cursor.line2);
+        const k1 = lMin === cursor.line1 ? cursor.key1 : cursor.key2;
+        const k2 = lMin === cursor.line2 ? cursor.key2 : cursor.key1;
+        let selHTML = "";
+        //background: white 0 0;
+        //background-size: 0 19px;
+        selHTML += translateSelection(k1, lMin);
+        for (let line = lMin + 1; line < lMax; line++) {
+            selHTML += translateSelection(0, line);
+        }
+        if (cursor.line1 !== cursor.line2) {
+            selHTML += translateSelection(k2, lMax);
+        }
+        selectionDiv.innerHTML = selHTML;
     }
 
     function setFocus(value: boolean) {
         if (isFocusing === value) return;
+        if (!value) return;
         isFocusing = value;
         cursorDiv.hidden = !isFocusing;
+        if (!isFocusing) isMouseDown = false;
         updateCursorPosition();
     }
 
     function updateLineList() {
         let lineListStr = "";
-        for (let i = 0; i < linesNum; i++) lineListStr += `<div class="lines-line">${i + 1}</div>`;
+        for (let i = 0; i < code.length; i++) lineListStr += `<div class="lines-line">${i + 1}</div>`;
         linesDiv.innerHTML = lineListStr;
-        updateCursorPosition();
-    }
-
-    function addLine() {
-        linesNum++;
-        const div = document.createElement("div");
-        div.classList.add("line");
-        const currentLine = codeDiv.children[cursorLineIndex];
-        if (currentLine) currentLine.insertAdjacentElement("afterend", div);
-        else codeDiv.appendChild(div);
-        updateLineList();
     }
 
     function updateLineFormat(index: number) {
@@ -52,110 +78,208 @@ export function Editor(editor: HTMLDivElement) {
     function write(key: string) {
         if (key === "\n") return CustomKeys.Enter();
         if (key === "\b") return CustomKeys.Backspace();
-        const lineCode = code[cursorLineIndex];
-        code[cursorLineIndex] = lineCode.substring(0, cursorKeyIndex) + key + lineCode.substring(cursorKeyIndex);
-        cursorKeyIndex++;
-        updateLineFormat(cursorLineIndex);
+        if (hasSelection()) CustomKeys.Backspace();
+        const lineCode = code[cursor.line1];
+        code[cursor.line1] = lineCode.substring(0, cursor.key1) + key + lineCode.substring(cursor.key1);
+        cursor.key1 = ++cursor.key2;
+        updateLineFormat(cursor.line1);
         updateCursorPosition();
     }
 
-    let linesNum = 0;
-    let cursorLineIndex = 0;
-    let cursorKeyIndex = 0;
+    function hasSelection() {
+        return cursor.key1 !== cursor.key2 || cursor.line1 !== cursor.line2;
+    }
+
+    function putSelectionToEnd() {
+        const kMax = Math.max(cursor.key1, cursor.key2);
+        const lMax = Math.max(cursor.line1, cursor.line2);
+        cursor.key1 = cursor.key2 = kMax;
+        cursor.line1 = cursor.line2 = lMax;
+        updateCursorPosition();
+    }
+
+    function doKeyLimits() {
+        if (cursor.key1 < 0) {
+            cursor.key1 = cursor.key2 = 0;
+        }
+        if (cursor.key1 > code[cursor.line1].length) {
+            cursor.key1 = cursor.key2 = code[cursor.line1].length;
+        }
+        if (cursor.line1 < 0) {
+            cursor.line1 = cursor.line2 = 0;
+        }
+        if (cursor.line1 > code.length - 1) {
+            cursor.line1 = cursor.line2 = code.length - 1;
+        }
+        updateCursorPosition();
+    }
+
     linesDiv.innerHTML = "1";
     cursorDiv.hidden = true;
     const code: string[] = [""];
     for (let i = 0; i < code.length; i++) {
-        addLine();
+        codeDiv.innerHTML += `<div class="line"></div>`;
+        updateLineList();
         updateLineFormat(i);
-        cursorLineIndex++;
+        cursor.line1 = ++cursor.line2;
     }
     addEventListener("blur", () => setFocus(false));
     addEventListener("mousedown", e => {
         setFocus(e.composedPath().includes(codeDiv));
     });
+
     const CustomKeys = {
         Enter() {
-            addLine();
-            code.splice(cursorLineIndex + 1, 0, "");
-            code[cursorLineIndex + 1] = code[cursorLineIndex].substring(cursorKeyIndex);
-            code[cursorLineIndex] = code[cursorLineIndex].substring(0, cursorKeyIndex);
-            cursorLineIndex++;
-            cursorKeyIndex = 0;
-            updateLineFormat(cursorLineIndex - 1);
-            updateLineFormat(cursorLineIndex);
+            if (hasSelection()) {
+                CustomKeys.Backspace();
+            }
+            const div = document.createElement("div");
+            div.classList.add("line");
+            const currentLine = codeDiv.children[cursor.line1];
+            if (currentLine) currentLine.insertAdjacentElement("afterend", div);
+            else codeDiv.appendChild(div);
+            code.splice(cursor.line1 + 1, 0, "");
+            const lineCode = code[cursor.line1];
+            code[cursor.line1] = lineCode.substring(0, cursor.key1);
+            code[cursor.line1 + 1] = lineCode.substring(cursor.key1);
+            cursor.line1 = ++cursor.line2;
+            cursor.key1 = 0;
+            cursor.key2 = 0;
+            updateLineFormat(cursor.line1 - 1);
+            updateLineFormat(cursor.line1);
             updateCursorPosition();
+            updateLineList();
+            editor.scrollTop = editor.scrollHeight;
         },
         Backspace() {
-            const line = <HTMLDivElement>codeDiv.children[cursorLineIndex];
-            if (!line.innerHTML) {
-                if (cursorLineIndex === 0) return;
-                code.splice(cursorLineIndex, 1);
-                line.remove();
-                cursorLineIndex--;
-                linesNum--;
-                cursorKeyIndex = code[cursorLineIndex].length;
-                updateLineList();
+            if (hasSelection()) {
+                if (cursor.line1 === cursor.line2) {
+                    const kMin = Math.min(cursor.key1, cursor.key2);
+                    const kMax = Math.max(cursor.key1, cursor.key2);
+                    const lineCode = code[cursor.line1];
+                    code[cursor.line1] = lineCode.substring(0, kMin) + lineCode.substring(kMax);
+                    cursor.key1 = cursor.key2 = kMin;
+                    updateLineFormat(cursor.line1);
+                    updateCursorPosition();
+                    return;
+                }
+                const lMin = Math.min(cursor.line1, cursor.line2);
+                const lMax = Math.max(cursor.line1, cursor.line2);
+                code.splice(lMin + 1, lMax - lMin - 1);
+                [...codeDiv.children].slice(lMin + 1, lMax).forEach(i => i.remove());
+                if (lMin === cursor.line1) {
+                    code[cursor.line1] = code[cursor.line1].substring(0, cursor.key1);
+                    code[cursor.line2] = code[cursor.line2].substring(cursor.key2);
+                    cursor.key2 = cursor.key1;
+                    cursor.line2 = cursor.line1;
+                } else {
+                    code[cursor.line1] = code[cursor.line1].substring(cursor.key1);
+                    code[cursor.line2] = code[cursor.line2].substring(0, cursor.key2);
+                    cursor.key1 = cursor.key2;
+                    cursor.line1 = cursor.line2;
+                }
+                updateLineFormat(cursor.line1);
+                if (cursor.line1 !== cursor.line2) updateLineFormat(cursor.line2);
+                updateCursorPosition();
                 return;
             }
-            const lineCode = code[cursorLineIndex];
-            code[cursorLineIndex] = lineCode.substring(0, cursorKeyIndex - 1) + lineCode.substring(cursorKeyIndex);
-            updateLineFormat(cursorLineIndex);
-            cursorKeyIndex--;
-            updateCursorPosition();
-        },
-        ArrowRight() {
-            cursorKeyIndex++;
-            if (cursorKeyIndex > code[cursorLineIndex].length) {
-                if (!code[cursorLineIndex + 1]) {
-                    cursorKeyIndex--;
-                    return;
-                }
-                cursorKeyIndex = 0;
-                cursorLineIndex++;
+            if (cursor.key1 === 0) {
+                if (cursor.line1 === 0) return;
+                const removedLine = code[cursor.line1];
+                code.splice(cursor.line1, 1);
+                codeDiv.children[cursor.line1].remove();
+                cursor.line1 = --cursor.line2;
+                cursor.key1 = cursor.key2 = code[cursor.line1].length;
+                code[cursor.line1] += removedLine;
+                updateLineFormat(cursor.line1);
+                updateLineList();
+                updateCursorPosition();
+                return;
             }
+            const lineCode = code[cursor.line1];
+            code[cursor.line1] = code[cursor.line2] = lineCode.substring(0, cursor.key1 - 1) + lineCode.substring(cursor.key1);
+            updateLineFormat(cursor.line1);
+            cursor.key1 = --cursor.key2;
             updateCursorPosition();
         },
-        ArrowLeft() {
-            cursorKeyIndex--;
-            if (cursorKeyIndex < 0) {
-                if (!code[cursorLineIndex - 1]) {
-                    cursorKeyIndex++;
-                    return;
-                }
-                cursorLineIndex--;
-                cursorKeyIndex = code[cursorLineIndex].length;
+        ArrowRight(event: KeyboardEvent) {
+            event.preventDefault();
+            if (hasSelection()) return putSelectionToEnd();
+            cursor.key1 = ++cursor.key2;
+            if (cursor.key1 > code[cursor.line1].length && cursor.line1 < code.length - 1) {
+                cursor.line1 = ++cursor.line2;
+                cursor.key1 = cursor.key2 = 0;
             }
-            updateCursorPosition();
+            doKeyLimits();
         },
-        ArrowUp() {
-            if (cursorLineIndex <= 0) return;
-            cursorLineIndex--;
-            if (cursorKeyIndex > code[cursorLineIndex].length) cursorKeyIndex = code[cursorLineIndex].length;
-            updateCursorPosition();
+        ArrowLeft(event: KeyboardEvent) {
+            event.preventDefault();
+            if (hasSelection()) return putSelectionToEnd();
+            cursor.key1 = --cursor.key2;
+            if (cursor.key1 < 0 && cursor.line1 > 0) {
+                cursor.line1 = --cursor.line2;
+                cursor.key1 = cursor.key2 = Infinity; // this will make it will go to the end of that line
+            }
+            doKeyLimits();
         },
-        ArrowDown() {
-            if (cursorLineIndex >= code.length - 1) return;
-            cursorLineIndex++;
-            if (cursorKeyIndex > code[cursorLineIndex].length) cursorKeyIndex = code[cursorLineIndex].length;
-            updateCursorPosition();
+        ArrowUp(event: KeyboardEvent) {
+            event.preventDefault();
+            if (hasSelection()) return putSelectionToEnd();
+            cursor.line1 = --cursor.line2;
+            doKeyLimits();
+        },
+        ArrowDown(event: KeyboardEvent) {
+            event.preventDefault();
+            if (hasSelection()) return putSelectionToEnd();
+            if (cursor.line1 >= code.length - 1) return;
+            cursor.line1 = ++cursor.line2;
+            doKeyLimits();
+        },
+        Tab(event: KeyboardEvent) {
+            event.preventDefault();
+            write(" ");
+            write(" ");
+            write(" ");
+            write(" ");
         }
     };
+    const IgnoredKeys = [
+        "Alt", "Shift", "Control"
+    ];
     addEventListener("keydown", e => {
         if (!isFocusing) return;
+        if (IgnoredKeys.includes(e.key)) return;
         if (e.key in CustomKeys) {
             // @ts-ignore
-            return CustomKeys[e.key]();
+            return CustomKeys[e.key](e);
         }
-        if (e.key.length !== 1) return console.log(e.key);
+        if (e.key.length !== 1) {
+            return console.log(e.key);
+        }
         write(e.key);
     });
-    editor.addEventListener("mousedown", e => {
-        const rect = editor.getBoundingClientRect();
-        const y = Math.max(0, Math.min(code.length - 1, Math.floor((e.pageY - rect.y) / CH)));
-        const x = Math.max(0, Math.min(code[y].length, Math.round((e.pageX - rect.x) / CW - 3)));
-        cursorLineIndex = y;
-        cursorKeyIndex = x;
+    codeDiv.addEventListener("mousedown", e => {
+        isMouseDown = true;
+        const rect = codeDiv.getBoundingClientRect();
+        const y = Math.max(0, Math.min(code.length - 1, Math.floor((e.clientY - rect.y) / CH)));
+        const x = Math.max(0, Math.min(code[y].length, Math.round((e.clientX - rect.x) / CW)));
+        cursor.line1 = y;
+        cursor.line2 = y;
+        cursor.key1 = x;
+        cursor.key2 = x;
         updateCursorPosition();
+    });
+    addEventListener("mousemove", e => {
+        if (!isMouseDown) return;
+        const rect = codeDiv.getBoundingClientRect();
+        const y = Math.max(0, Math.min(code.length - 1, Math.floor((e.clientY - rect.y) / CH)));
+        const x = Math.max(0, Math.min(code[y].length, Math.round((e.clientX - rect.x) / CW)));
+        cursor.line2 = y;
+        cursor.key2 = x;
+        updateCursorPosition();
+    });
+    addEventListener("mouseup", () => {
+        if (!isMouseDown) return;
+        isMouseDown = false;
     });
 }
