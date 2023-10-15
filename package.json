@@ -1,6 +1,10 @@
 {
   "name": "code-editor",
   "version": "1.0.0",
-  "dependencies": {
+  "scripts": {
+    "build": "npx tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.2.2"
   }
 }
