@@ -1,4 +1,4 @@
-import {tokenizeJS} from "./tokenizer";
+import {paintJS} from "./tokenizer";
 
 export function Editor(editor: HTMLDivElement) {
     const cursorDiv = <HTMLDivElement>document.querySelector(".cursor");
@@ -38,9 +38,9 @@ export function Editor(editor: HTMLDivElement) {
             key2 = key1;
             key1 = tmp;
         }
-        c += code[line1].substring(key1);
+        c += code[line1].substring(key1) + "\n";
         for (let i = line1 + 1; i < line2; i++) {
-            c += code[i];
+            c += code[i] + "\n";
         }
         c += code[line2].substring(0, key2);
         return c;
@@ -64,7 +64,7 @@ export function Editor(editor: HTMLDivElement) {
             let k2 = lMin === cursor.line2 ? cursor.key1 : cursor.key2;
             selHTML += makeSelectionBox(k1, lMin, code[lMin].length - k1);
             for (let line = lMin + 1; line < lMax; line++) {
-                if (code[line].length > 0) selHTML += makeSelectionBox(0, lMin, code[lMin].length);
+                if (code[line].length > 0) selHTML += makeSelectionBox(0, line, code[line].length);
             }
             if (cursor.line1 !== cursor.line2) {
                 selHTML += makeSelectionBox(0, lMax, k2);
@@ -92,31 +92,61 @@ export function Editor(editor: HTMLDivElement) {
         const line = <HTMLDivElement>codeDiv.children[index];
         let html = "";
         const content = code[index];
-        const tokens = tokenizeJS(content);
+        const tokens = paintJS(content);
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
-            html += `<span style="color:${token.color}">${token.value}</span>`;
+            html += `<span style="color:${token.color}">${token.text === " " ? "&nbsp;" : token.text}</span>`;
         }
         line.innerHTML = html;
     }
 
+    function moveToCursor() {
+        // todo
+    }
+
     function writeText(text: string) {
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            console.timeEnd()
-            console.time()
-            if (char === "\n") {
-                pressEnter();
-                continue;
+        if (hasSelection()) eraseSelectedCode();
+        const lines = text.split("\n");
+
+        const lineCode = code[cursor.line1];
+        code[cursor.line1] = lineCode.substring(0, cursor.key1) + lines[0];
+        updateLineFormat(cursor.line1);
+        if (lines.length === 1) {
+            cursor.key1 = cursor.key2 += lines[0].length;
+        } else {
+            const lastLine = lines[lines.length - 1];
+            if (!code[cursor.line1 + 1]) {
+                const div = document.createElement("div");
+                div.classList.add("line");
+                codeDiv.children[cursor.line1].insertAdjacentElement("afterend", div);
             }
-            writeChar(char);
+            code[cursor.line1 + 1] = lastLine + lineCode.substring(cursor.key1);
+            updateLineFormat(cursor.line1 + 1);
+            code.splice(cursor.line1 + 1, 0, ...new Array(lines.length - 2).fill(""));
+            for (let i = 0; i < lines.length - 2; i++) { // -2 is because we already can do the first and last
+                const div = document.createElement("div");
+                div.classList.add("line");
+                if (i === 0) codeDiv.children[cursor.line1].insertAdjacentElement("afterend", div);
+                else codeDiv.appendChild(div);
+                code[cursor.line1 + i + 1] = lines[i + 1];
+                updateLineFormat(cursor.line1 + i + 1);
+            }
+            cursor.key1 = cursor.key2 = lastLine.length;
+            cursor.line1 = cursor.line2 += lines.length - 1;
         }
+        updateLineList();
+        updateCursorPosition();
+        moveToCursor();
+    }
+
+    function __rawWriteChar(key: string) {
+        const lineCode = code[cursor.line1];
+        code[cursor.line1] = lineCode.substring(0, cursor.key1) + key + lineCode.substring(cursor.key1);
     }
 
     function writeChar(key: string) {
         if (hasSelection()) eraseSelectedCode();
-        const lineCode = code[cursor.line1];
-        code[cursor.line1] = lineCode.substring(0, cursor.key1) + key + lineCode.substring(cursor.key1);
+        __rawWriteChar(key);
         cursor.key1 = ++cursor.key2;
         updateLineFormat(cursor.line1);
         updateCursorPosition();
@@ -138,9 +168,9 @@ export function Editor(editor: HTMLDivElement) {
         cursor.key2 = 0;
         updateLineFormat(cursor.line1 - 1);
         updateLineFormat(cursor.line1);
-        updateCursorPosition();
         updateLineList();
-        editor.scrollTop = editor.scrollHeight;
+        updateCursorPosition();
+        moveToCursor();
     }
 
     function hasSelection() {
@@ -354,25 +384,24 @@ export function Editor(editor: HTMLDivElement) {
         }
     };
     const ModifierCombinations: Record<string, (event: KeyboardEvent) => void> = {
-        "control-c"(event: KeyboardEvent) {
+        "control-a"(event: KeyboardEvent) {
+            cursor.line1 = cursor.key1 = 0;
+            cursor.key2 = code[cursor.line2 = code.length - 1].length;
+            updateCursorPosition();
+        },
+        async "control-c"(event: KeyboardEvent) {
             const text = getCodeBetween(cursor.key1, cursor.line1, cursor.key2, cursor.line2);
-            const tempInput = document.createElement("input");
-            tempInput.value = text;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            tempInput.setSelectionRange(0, 99999999);
-            document.execCommand("copy");
-            tempInput.remove();
+            await navigator.clipboard.writeText(text);
         },
         async "control-v"(event: KeyboardEvent) {
             const text = await navigator.clipboard.readText().catch(() => "");
-            writeText(text);
+            writeText(text.replaceAll("\r\n", "\n"));
         }
     };
     const IgnoredKeys = [
         "Alt", "Shift", "Control", "Meta",
         "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12",
-        "CapsLock", "Unidentified"
+        "CapsLock", "Unidentified", "AltGraph"
     ];
     addEventListener("keydown", e => {
         if (!isFocusing) return;

@@ -8,4 +8,4 @@ Check it out at https://oguzhanumutlu.github.io/lithium/
 
 # Bugs
 
-- If your code reaches the end of the screen height, selections break.
+- If your code reaches the end of the screen, selections break.

@@ -1,4 +1,5 @@
 .editor {
+    position: relative;
     background: #29292c;
     font-family: monospace, serif;
     color: #c9c9c9;
@@ -30,6 +31,7 @@
     width: 100%;
     height: 100%;
     white-space: nowrap;
+    overflow-x: auto;
 }
 
 .cursor {
