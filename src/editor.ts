@@ -254,7 +254,13 @@ export function Editor(editor: HTMLDivElement) {
 
     linesDiv.innerHTML = "1";
     cursorDiv.hidden = true;
-    const code: string[] = ["abc def ghi"];
+    const code: string[] = `const a: number = 10;
+
+export function myFunction(text: string) {
+    console.log(text);
+}
+
+myFunction(a);`.split("\n");
     for (let i = 0; i < code.length; i++) {
         codeDiv.innerHTML += `<div class="line"></div>`;
         updateLineList();

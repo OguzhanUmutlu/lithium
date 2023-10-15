@@ -105,8 +105,8 @@ export function paintJS(code: string) {
             continue;
         }
         const backToken = backtraceNonSpace(tokens, i - 1);
+        const forwardToken = forwardtraceNonSpace(tokens, i + 1);
         if (backToken && backToken.text === ".") {
-            const forwardToken = forwardtraceNonSpace(tokens, i + 1);
             if (forwardToken && forwardToken.text === "(") {
                 parts.push({color: COLOR_FUNCTION, text: token.text});
                 continue;
@@ -114,7 +114,7 @@ export function paintJS(code: string) {
             parts.push({color: COLOR_MEMBER, text: token.text});
             continue;
         }
-        if (backToken && backToken.text === "function") {
+        if ((backToken && backToken.text === "function") || (forwardToken && forwardToken.text === "(")) {
             parts.push({color: COLOR_FUNCTION, text: token.text});
             continue;
         }
