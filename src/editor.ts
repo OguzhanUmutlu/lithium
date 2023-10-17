@@ -1,4 +1,4 @@
-import {paintJS, tokenizeJS} from "./tokenizer";
+import {Highlights} from "./highlight/highlights";
 
 type Cursor = {
     line1: number,
@@ -8,10 +8,21 @@ type Cursor = {
 };
 
 export function Editor(editor: HTMLDivElement) {
+    const syntax = new Highlights[".ts"]();
+    editor.innerHTML = `<div class="cursor blink"></div>
+<div class="selection"></div>
+<div class="lines"></div>
+<div class="code"></div>
+<div class="scroll-x"><div class="scroll-x-p"></div></div>
+<div class="scroll-y"><div class="scroll-y-p"></div></div>`;
     const cursorDiv = <HTMLDivElement>document.querySelector(".cursor");
     const selectionDiv = <HTMLDivElement>document.querySelector(".selection");
     const linesDiv = <HTMLDivElement>editor.querySelector(".lines");
     const codeDiv = <HTMLDivElement>editor.querySelector(".code");
+    const scrollXDiv = <HTMLDivElement>editor.querySelector(".scroll-x");
+    const scrollXPos = <HTMLDivElement>editor.querySelector(".scroll-x-p");
+    const scrollYDiv = <HTMLDivElement>editor.querySelector(".scroll-y");
+    const scrollYPos = <HTMLDivElement>editor.querySelector(".scroll-y-p");
 
     let isFocusing = false;
     let isMouseDown = false;
@@ -22,6 +33,10 @@ export function Editor(editor: HTMLDivElement) {
         key1: 0,
         line2: 0,
         key2: 0
+    };
+    const scrollData = {
+        x: 0,
+        y: 0
     };
     const history: { code: string[], cursor: Cursor }[] = [];
     let historyIndex = -1;
@@ -55,6 +70,7 @@ export function Editor(editor: HTMLDivElement) {
             updateLineFormat(i, true);
         }
         cursor = {...now.cursor};
+        updateLineList();
         updateCursorPosition(true);
     }
 
@@ -109,7 +125,6 @@ export function Editor(editor: HTMLDivElement) {
 
     function setFocus(value: boolean) {
         if (isFocusing === value) return;
-        if (!value) return;
         isFocusing = value;
         cursorDiv.hidden = !isFocusing;
         if (!isFocusing) isMouseDown = false;
@@ -118,21 +133,43 @@ export function Editor(editor: HTMLDivElement) {
 
     function updateLineList() {
         let lineListStr = "";
-        for (let i = 0; i < code.length; i++) lineListStr += `<div class="lines-line">${i + 1}</div>`;
+        for (let i = 0; i < code.length; i++) lineListStr += `<div>${i + 1}</div>`;
         linesDiv.innerHTML = lineListStr;
     }
 
     function updateLineFormat(index: number, noLoop = false) {
         if (!noLoop) trySaveHistory();
+        updateScroll();
+        updateSyntaxHighlighting();
+        return;
         const line = <HTMLDivElement>codeDiv.children[index];
         let html = "";
         const content = code[index];
-        const tokens = paintJS(content);
+        const tokens = syntax.paint(content);
         for (let i = 0; i < tokens.length; i++) {
             const token = tokens[i];
-            html += `<span style="color:${token.color}">${token.text === " " ? "&nbsp;" : token.text}</span>`;
+            html += `<span${token.color ? ` style="color:${token.color}"` : ""}>${token.text === " " ? "&nbsp;" : token.text}</span>`;
         }
         line.innerHTML = html;
+    }
+
+    function updateSyntaxHighlighting() {
+        const tokens = syntax.paint(code.join("\n"));
+        console.log(tokens);
+        let lineIndex = 0;
+        let line = <HTMLDivElement>codeDiv.children[0];
+        let html = "";
+        for (let i = 0; i <= tokens.length; i++) {
+            const token = tokens[i];
+            if (!token || token.text === "\n") {
+                line.innerHTML = html;
+                lineIndex++;
+                line = <HTMLDivElement>codeDiv.children[lineIndex];
+                html = "";
+                continue;
+            }
+            html += `<span${token.color ? ` style="color:${token.color}"` : ""}>${token.text === " " ? "&nbsp;" : token.text}</span>`;
+        }
     }
 
     function moveToCursor() {
@@ -189,18 +226,23 @@ export function Editor(editor: HTMLDivElement) {
 
     function pressEnter() {
         if (hasSelection()) eraseSelectedCode();
+        let startSpace = 0;
+        const lineCode = code[cursor.line1];
+        for (let i = 0; i < lineCode.length; i++) {
+            if (lineCode[i] === " ") startSpace++;
+            else break;
+        }
         const div = document.createElement("div");
         div.classList.add("line");
         const currentLine = codeDiv.children[cursor.line1];
         if (currentLine) currentLine.insertAdjacentElement("afterend", div);
         else codeDiv.appendChild(div);
         code.splice(cursor.line1 + 1, 0, "");
-        const lineCode = code[cursor.line1];
         code[cursor.line1] = lineCode.substring(0, cursor.key1);
-        code[cursor.line1 + 1] = lineCode.substring(cursor.key1);
+        code[cursor.line1 + 1] = " ".repeat(startSpace) + lineCode.substring(cursor.key1);
         cursor.line1 = ++cursor.line2;
-        cursor.key1 = 0;
-        cursor.key2 = 0;
+        cursor.key1 = startSpace;
+        cursor.key2 = startSpace;
         updateLineFormat(cursor.line1 - 1);
         updateLineFormat(cursor.line1);
         updateLineList();
@@ -283,15 +325,66 @@ export function Editor(editor: HTMLDivElement) {
         doKeyLimits();
     }
 
+    function updateScroll() {
+        const rect = editor.getBoundingClientRect();
+
+        let maxScrollX = 0;
+        for (let i = 0; i < code.length; i++) {
+            const l = code[i].length * CW;
+            if (l > maxScrollX) maxScrollX = l;
+        }
+        let maxScrollY = code.length * CH - rect.height;
+
+        if (maxScrollX < rect.width) maxScrollX = 0;
+        if (maxScrollY + rect.height < rect.height) maxScrollY = 0;
+
+        if (scrollData.x < 0) scrollData.x = 0;
+        if (scrollData.x > maxScrollX) scrollData.x = maxScrollX;
+
+        if (scrollData.y < 0) scrollData.y = 0;
+        if (scrollData.y > maxScrollY) scrollData.y = maxScrollY;
+
+        scrollXDiv.hidden = maxScrollX === 0;
+        if (maxScrollX) {
+            const scrollXOnce = `calc(calc(100% - 20px) / 100 * ${Math.floor(maxScrollX / 100)})`;
+            const scrollXPercent = Math.floor((scrollData.x / maxScrollX) * 100);
+            scrollXDiv.style.bottom = 5 - scrollData.y + "px";
+            scrollXDiv.style.left = 5 + scrollData.x + "px";
+            scrollXPos.style.left = `calc(calc(100% - ${scrollXOnce}) / 100 * ${scrollXPercent})`;
+            scrollXPos.style.width = scrollXOnce;
+        }
+
+        scrollYDiv.hidden = maxScrollY === 0;
+        if (maxScrollY) {
+            const scrollYOnce = `calc(calc(100% - 20px) / 100 * ${Math.floor(maxScrollY / 100)})`;
+            const scrollYPercent = Math.floor((scrollData.y / maxScrollY) * 100);
+            scrollYDiv.style.right = 5 - scrollData.x + "px";
+            scrollYDiv.style.top = 5 + scrollData.y + "px";
+            scrollYPos.style.top = `calc(calc(100% - ${scrollYOnce}) / 100 * ${scrollYPercent})`;
+            scrollYPos.style.height = scrollYOnce;
+        }
+
+        editor.scrollTop = scrollData.y;
+        codeDiv.scrollLeft = scrollData.x;
+        if (editor.scrollTop < scrollData.y) {
+            scrollData.y = editor.scrollTop;
+            updateScroll();
+        }
+        if (editor.scrollLeft < scrollData.x) {
+            scrollData.x = editor.scrollLeft;
+            updateScroll();
+        }
+    }
+
+    function doScroll(x: number, y: number) {
+        scrollData.x = Math.floor(scrollData.x + x);
+        scrollData.y = Math.floor(scrollData.y + y);
+        updateScroll();
+    }
+
     linesDiv.innerHTML = "1";
     cursorDiv.hidden = true;
-    let code: string[] = `const a = 10;
-
-export function myFunction(text) {
-    console.log(text);
-}
-
-myFunction(a);`.split("\n");
+    let code: string[] = [""];
     for (let i = 0; i < code.length; i++) {
         codeDiv.innerHTML += `<div class="line"></div>`;
         updateLineList();
@@ -396,9 +489,13 @@ myFunction(a);`.split("\n");
         },
         ArrowUp(event: KeyboardEvent) {
             event.preventDefault();
+            if (event.ctrlKey) {
+                doScroll(0, -CH);
+                return;
+            }
             if (!event.shiftKey && hasSelection()) putSelectionToEnd();
             if (cursor.line1 === 0) {
-                cursor.key2 = 0;
+                cursor.key1 = 0;
                 if (!event.shiftKey) cursor.key2 = 0;
                 updateCursorPosition();
                 return;
@@ -409,6 +506,10 @@ myFunction(a);`.split("\n");
         },
         ArrowDown(event: KeyboardEvent) {
             event.preventDefault();
+            if (event.ctrlKey) {
+                doScroll(0, CH);
+                return;
+            }
             if (!event.shiftKey && hasSelection()) putSelectionToEnd();
             if (cursor.line1 >= code.length - 1) {
                 cursor.key2 = code[cursor.line1].length;
@@ -479,6 +580,7 @@ myFunction(a);`.split("\n");
         modifierName += e.key;
         const modifier = ModifierCombinations[modifierName];
         if (modifier) return modifier(e);
+        e.preventDefault();
         writeChar(e.key);
         trySaveHistory();
     });
@@ -507,7 +609,7 @@ myFunction(a);`.split("\n");
     });
     codeDiv.addEventListener("dblclick", e => {
         const {x, y} = getMousePosition(e);
-        const groups = tokenizeJS(code[y]);
+        const groups = syntax.tokenize(code[y]);
         for (let i = 0, j = 0; i < groups.length; i++) {
             const group = groups[i];
             j += group.text.length;
@@ -529,6 +631,11 @@ myFunction(a);`.split("\n");
         if (!isMouseDown) return;
         isMouseDown = false;
     });
+    editor.addEventListener("wheel", e => {
+        e.preventDefault();
+        doScroll(e.deltaX, e.deltaY);
+    });
+    updateScroll();
 
     return {
         get history() {

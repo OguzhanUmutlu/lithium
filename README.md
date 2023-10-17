@@ -6,6 +6,12 @@ Lithium - Lightweight code editor
 
 Check it out at https://oguzhanumutlu.github.io/lithium/
 
+# Todo
+
+- Auto spacing when enter key is pressed
+- Code formatting
+- Template strings
+
 # Bugs
 
 - If your code reaches the end of the screen, selections break.

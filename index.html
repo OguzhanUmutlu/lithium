@@ -10,7 +10,6 @@
     <style>
         body {
             margin: 0;
-            overflow: hidden;
         }
 
         .run {
@@ -23,6 +22,7 @@
             color: white;
             font-family: monospace, serif;
             cursor: pointer;
+            user-select: none;
         }
 
         .run:hover {
@@ -31,12 +31,7 @@
     </style>
 </head>
 <body>
-<div class="editor">
-    <div class="cursor blink"></div>
-    <div class="selection"></div>
-    <div class="lines"></div>
-    <div class="code"></div>
-</div>
+<div class="editor" style="width: 100vw; height: 100vh"></div>
 <div class="run">Run JS</div>
 </body>
 <script type="module">
@@ -44,8 +39,9 @@
 
     const editor = Editor(document.querySelector(".editor"));
 
-    document.querySelector(".run").addEventListener("click", event => {
-        import(URL.createObjectURL(new Blob([editor.code.join("\n")], {
+    document.querySelector(".run").addEventListener("click", () => {
+
+        import(/* @vite-ignore */ URL.createObjectURL(new Blob([editor.code.join("\n")], {
             type: "application/javascript"
         })));
     });
