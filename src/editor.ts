@@ -155,7 +155,6 @@ export function Editor(editor: HTMLDivElement) {
 
     function updateSyntaxHighlighting() {
         const tokens = syntax.paint(code.join("\n"));
-        console.log(tokens);
         let lineIndex = 0;
         let line = <HTMLDivElement>codeDiv.children[0];
         let html = "";
